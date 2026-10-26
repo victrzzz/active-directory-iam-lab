@@ -1,0 +1,17 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Credentials / secrets — never commit these
+*.pem
+*.key
+secrets.*
+*-credentials*
+passwords*
+
+# Local scratch
+/tmp/
+*.log
