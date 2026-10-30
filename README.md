@@ -201,4 +201,4 @@ All people and the company in the dataset are fictional.
 
 ---
 
-*Part of a broader cybersecurity portfolio. See [github.com/victor-gaspar](https://github.com/victor-gaspar). Built by Victor Alonso Gaspar.*
+*Part of a broader cybersecurity portfolio. See [github.com/victrzzz](https://github.com/victrzzz). Built by Victor Alonso Gaspar.*
