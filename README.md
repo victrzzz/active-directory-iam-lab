@@ -1,10 +1,10 @@
 # Active Directory + Okta IAM Lab
 
-I built a self-hosted identity and access management lab: a Windows Server domain controller, a domain-joined Windows 11 admin workstation, role-based access to file shares, Group Policy, and an Okta org with MFA. Then I tested that access follows group membership and started a simulated access review on 40 accounts.
+I built a self-hosted identity and access management lab: a Windows Server domain controller, a domain-joined Windows 11 admin workstation, role-based access to file shares, Group Policy, and an Okta org with MFA. Then I tested that access follows group membership and ran a simulated access review on 40 accounts.
 
 Everything runs on one mini PC under Proxmox. This README documents what I built, what I tested, what broke, and how I fixed it.
 
-> **Status:** In progress. The directory, shares, GPO and Okta work are done and tested. The access review is underway; see [Where it stands](#where-it-stands).
+> **Status:** In progress. The directory, shares, GPO and Okta work are done and tested. The access review is complete; remediation in AD is next. See [Where it stands](#where-it-stands).
 
 ---
 
@@ -82,6 +82,43 @@ Evidence is in [`screenshots/`](screenshots/): for example `premington_denied_ac
 
 ---
 
+## Access review
+
+I reviewed all 40 accounts as if I were the access reviewer: for each one I checked job title, manager, employment type, last login, systems and group memberships against the business justification, then recorded a decision, what to remove, who owns the decision, and why. The workbook is in [`docs/Harborview_Access_Review.xlsx`](docs/Harborview_Access_Review.xlsx).
+
+| Decision | Accounts |
+|---|---|
+| Keep | 32 |
+| Modify access | 3 |
+| Remove access | 1 |
+| Disable account | 3 |
+| Escalate | 1 |
+
+**What I found**
+
+| Account | Issue | Decision |
+|---|---|---|
+| Wesley Crane | Terminated 2026-08-14, account still enabled (offboarding gap) | Disable account |
+| Derek Vance | Contractor ended 2026-06-30, logged in 2026-09-12 after the end date | Disable account, investigate activity |
+| Maya Ortega | Contractor ended 2026-09-30, logged in 2026-10-21 with admin access (IT-Admins, Network-Ops) | Disable account, review admin activity since contract end |
+| Ian Pruitt | Still in Domain Admins from a 2025 project | Remove Domain Admins and AD Admin Console, keep IT-Helpdesk |
+| Sam Delgado | Kept manager and admin access from covering a 2024 leave | Modify: remove Finance-Managers, Expenses-Approvers, ERP-Finance (Admin), Payroll |
+| Jordan Ellis | Moved from Finance to HR, still holds Finance access | Modify: remove Finance-Users, Finance-Reports, Expenses-Approvers, ERP-Finance, Expense Portal |
+| Ruth Calloway | HR generalist with leftover payroll access from a one-time correction | Modify: remove Payroll-Processors and Payroll |
+| Heidi Lawson | No login since 2026-02-03 | Escalate to manager; disable if unused |
+| Ryan Kowalski | Intern with password-reset rights | Keep, limited to standard users, time-limited, manager attestation |
+
+**What I learned**
+
+- Departed contractors and terminated employees were the highest risk: enabled accounts, and in two cases logins after the end date. Those need an investigation, not just a disable.
+- Movers (Jordan) and temporary access (Sam, Ruth, Ian) are the usual source of permission creep. Access that was granted for a reason needs an end date.
+- Every decision needs a specific rationale and a named owner. "Active employee, access matches role" is not enough.
+- My first pass had gaps (blank owners, vague rationales, Ruth marked Keep). I corrected them after a second look.
+
+Remediation (making these changes in AD, with before and after group exports) is next.
+
+---
+
 ## Problems I hit and how I fixed them
 
 - **RSAT would not install on the client (`0x800f0950`).** The client could not pull Features-on-Demand payloads from Windows Update. I ruled out a WSUS redirect and edition restrictions, and it resolved after a full Windows Update cycle. The fallback I documented is installing from the Features-on-Demand ISO with `-Source` / `-LimitAccess`. I also learned RSAT is only a remote GUI; AD can be fully managed from the DC with PowerShell.
@@ -101,8 +138,8 @@ Evidence is in [`screenshots/`](screenshots/): for example `premington_denied_ac
 | Infrastructure: Proxmox, NVMe storage, DC, client, DNS, domain join, RSAT, SSH | ✅ Done |
 | Access model: OUs, groups, 40 users, shares, NTFS, GPO | ✅ Done |
 | Okta: org, MFA, groups, users, group-based app assignment | ✅ Done |
-| Access review: dataset built; review of the 40 accounts | 🔲 In progress |
-| Remediate findings in AD, before/after evidence, findings writeup | 🔲 Planned |
+| Access review: 40 accounts reviewed, findings documented | ✅ Done |
+| Remediate findings in AD, before/after evidence | 🔲 Next |
 | AD Agent sync from AD to Okta | 🔲 Deferred |
 | Architecture diagram (draw.io) | 🔲 Planned |
 
@@ -118,6 +155,7 @@ Evidence is in [`screenshots/`](screenshots/): for example `premington_denied_ac
 - Group Policy
 - Okta group-based app assignment and MFA enrollment
 - Access verification: allow, deny, removal and re-add testing
+- Access reviews: joiner/mover/leaver risks, privileged access, decision owners and rationale
 - Proxmox administration: VMs, LVM-thin storage, disk migration, resource allocation
 - Troubleshooting from symptoms to root cause (see above)
 
@@ -131,10 +169,11 @@ Evidence is in [`screenshots/`](screenshots/): for example `premington_denied_ac
 ├── scripts/
 │   └── Build-HarborviewAD.ps1     # creates OUs, groups, 40 users, memberships
 ├── screenshots/                   # access tests, Okta dashboards
-└── docs/                          # (planned) access-review.md, architecture.png
+└── docs/
+    ├── Harborview_Access_Review.xlsx   # completed review of 40 accounts
+    └── architecture.png                # (planned)
 ```
 
 All people and the company in the dataset are fictional.
 
 ---
-
