@@ -20,37 +20,6 @@ Everything runs on one mini PC under Proxmox. This README documents what I built
 
 ---
 
-## Architecture
-
-```
-                     Proxmox Host (HP EliteDesk 800 G2 Mini)
-                     Intel i5-6500T · 16GB RAM · 256GB NVMe VM storage
-  ┌──────────────────────────────────────────────────────────────┐
-  │                                                                │
-  │   ┌─────────────────────────┐      ┌────────────────────────┐ │
-  │   │  DC01  (VM 101)          │      │  Client  (VM 102)      │ │
-  │   │  Windows Server 2022     │◄────►│  Windows 11 Enterprise │ │
-  │   │  Server Core (no GUI)    │ domain│  Domain-joined         │ │
-  │   │  Domain Controller       │ join  │  RSAT (ADUC/GPMC/DNS)  │ │
-  │   │  DNS for lab.local       │      │  OpenSSH Server        │ │
-  │   │  192.168.1.160           │      │  192.168.1.161         │ │
-  │   └─────────────────────────┘      └────────────────────────┘ │
-  │                                                                │
-  └──────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌───────────────────┐
-                    │   Okta (cloud)    │  groups mirrored by hand
-                    │ Integrator Free   │  (group-based app access)
-                    └───────────────────┘
-```
-
-**Domain:** `lab.local`
-
-**Why Server Core:** I ran the DC without a desktop GUI for a smaller footprint and attack surface. I administer it remotely from the Windows 11 client with RSAT, the way admins manage DCs from a workstation instead of signing in to the server.
-
----
-
 ## Access model
 
 Access is assigned to groups, never to individuals.
@@ -141,7 +110,6 @@ Remediation (making these changes in AD, with before and after group exports) is
 | Access review: 40 accounts reviewed, findings documented | ✅ Done |
 | Remediate findings in AD, before/after evidence | 🔲 Next |
 | AD Agent sync from AD to Okta | 🔲 Deferred |
-| Architecture diagram (draw.io) | 🔲 Planned |
 
 **About the sync:** I mirrored users into Okta by hand. The Okta AD Agent needs a domain-joined Windows Server host with at least 8 GB of RAM, which doesn't fit alongside the current VMs, so I deferred it. In production, users would come from an HR-driven joiner/mover/leaver workflow and sync automatically.
 
@@ -168,8 +136,7 @@ Remediation (making these changes in AD, with before and after group exports) is
 ├── README.md
 ├── screenshots/                   # access tests, Okta dashboards
 └── docs/
-    ├── Harborview_Access_Review.xlsx   # completed review of 40 accounts
-    └── architecture.png                # (planned)
+    └── Harborview_Access_Review.xlsx   # completed review of 40 accounts
 ```
 
 All people and the company in the dataset are fictional.
