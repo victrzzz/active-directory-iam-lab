@@ -12,8 +12,8 @@ Everything runs on one mini PC under Proxmox. This README documents what I built
 
 - **A Windows Server 2022 domain controller** (Server Core, no GUI) for `lab.local`, with DNS, running as a VM on Proxmox.
 - **A Windows 11 Enterprise client**, domain-joined, managed through RSAT (Active Directory Users and Computers, Group Policy Management) and reachable over OpenSSH.
-- **A directory for a fictional company, "Harborview Logistics":** 4 OUs (Finance, HR, IT, Security Groups), 20 role-based security groups, and 40 users with realistic job titles and memberships. I created the first user and groups by hand in ADUC, then wrote an idempotent PowerShell script ([`scripts/Build-HarborviewAD.ps1`](scripts/Build-HarborviewAD.ps1)) for the rest.
-- **Department file shares** (`\\DC01\Finance`, `\\DC01\HR`, `\\DC01\IT`) where NTFS permissions are granted only to that department's group. I built Finance by hand in the GUI, then scripted HR and IT.
+- **A directory for a fictional company, "Harborview Logistics":** 4 OUs (Finance, HR, IT, Security Groups), 20 role-based security groups, and 40 users with realistic job titles and memberships. I created the first user and groups by hand in ADUC, then added the rest through PowerShell.
+- **Department file shares** (`\\DC01\Finance`, `\\DC01\HR`, `\\DC01\IT`) where NTFS permissions are granted only to that department's group. I built Finance by hand in the GUI, then set up HR and IT with PowerShell.
 - **A GPO** linked to the Finance OU that maps the Finance share as `F:` at logon.
 - **An Okta org** (Integrator Free Plan) with MFA via Okta Verify, three groups mirroring AD, six users, and two apps assigned to the Finance group only.
 - **A simulated access review dataset:** 40 accounts with job titles, managers, employment type, last login, systems, group memberships and business justifications, seeded with the kinds of problems a real review exists to catch.
@@ -150,7 +150,7 @@ Remediation (making these changes in AD, with before and after group exports) is
 ## Skills demonstrated
 
 - Active Directory design and administration (Server Core, PowerShell, RSAT)
-- Idempotent bulk provisioning of OUs, groups and users
+- Bulk provisioning of OUs, groups and users with PowerShell
 - Role-based access control and least privilege with NTFS and security groups
 - Group Policy
 - Okta group-based app assignment and MFA enrollment
@@ -166,8 +166,6 @@ Remediation (making these changes in AD, with before and after group exports) is
 ```
 .
 ├── README.md
-├── scripts/
-│   └── Build-HarborviewAD.ps1     # creates OUs, groups, 40 users, memberships
 ├── screenshots/                   # access tests, Okta dashboards
 └── docs/
     ├── Harborview_Access_Review.xlsx   # completed review of 40 accounts
@@ -177,3 +175,4 @@ Remediation (making these changes in AD, with before and after group exports) is
 All people and the company in the dataset are fictional.
 
 ---
+
