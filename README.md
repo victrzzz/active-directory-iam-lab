@@ -4,7 +4,7 @@ I built a self-hosted identity and access management lab: a Windows Server domai
 
 Everything runs on one mini PC under Proxmox. This README documents what I built, what I tested, what broke, and how I fixed it.
 
-> **Status:** In progress. The directory, shares, GPO and Okta work are done and tested. The access review is complete; remediation in AD is next. See [Where it stands](#where-it-stands).
+> **Status:** Completed (scoped). The directory, shares, GPO, Okta MFA, access tests, and the 40-account access review are done. Remediating findings in Active Directory and Okta AD Agent sync are optional follow-ons, not required for this project to stand as finished. See [Where it stands](#where-it-stands).
 
 ---
 
@@ -14,7 +14,7 @@ Everything runs on one mini PC under Proxmox. This README documents what I built
 - **A Windows 11 Enterprise client**, domain-joined, managed through RSAT (Active Directory Users and Computers, Group Policy Management) and reachable over OpenSSH.
 - **A directory for a fictional company, "Harborview Logistics":** 4 OUs (Finance, HR, IT, Security Groups), 20 role-based security groups, and 40 users with realistic job titles and memberships. I created the first user and groups by hand in ADUC, then added the rest through PowerShell.
 - **Department file shares** (`\\DC01\Finance`, `\\DC01\HR`, `\\DC01\IT`) where NTFS permissions are granted only to that department's group. I built Finance by hand in the GUI, then set up HR and IT with PowerShell.
-- **A GPO** linked to the Finance OU that maps the Finance share as `F:` at logon.
+- **A GPO** linked to the Finance OU that maps the Finance share to `Z:` at logon.
 - **An Okta org** (Integrator Free Plan) with MFA via Okta Verify, three groups mirroring AD, six users, and two apps assigned to the Finance group only.
 - **A simulated access review dataset:** 40 accounts with job titles, managers, employment type, last login, systems, group memberships and business justifications, seeded with the kinds of problems a real review exists to catch.
 
@@ -27,7 +27,7 @@ Access is assigned to groups, never to individuals.
 - **OUs** organize users by department and scope Group Policy. They don't grant access.
 - **Security groups** (for example `Finance-Users`, `Finance-Managers`, `Payroll-Processors`, `HRIS-Admins`, `IT-Helpdesk`, `Server-Admins`) carry the permissions.
 - **File shares** are open at the share level, and NTFS does the gatekeeping: inheritance removed, and only Administrators, SYSTEM and the department's `-Users` group (Modify) can get in.
-- **Group Policy** decides who receives a setting. The `Finance - Map Share` GPO is linked to the Finance OU, so Finance users get the `F:` drive, but only members of `Finance-Users` can open it.
+- **Group Policy** decides who receives a setting. The `Finance - Map Share` GPO is linked to the Finance OU, so Finance users get the mapped Finance drive (`Z:`), but only members of `Finance-Users` can open the share.
 - **Okta** has no OUs, so access there is driven by groups. I mirrored `Finance-Users`, `HR-Users` and `IT-Users` by hand and assigned two apps to the Finance group.
 
 ---
@@ -38,16 +38,25 @@ I tested that access follows group membership, on both the Windows side and the 
 
 | Test | Expected | Result |
 |---|---|---|
-| Finance user (`premington`) opens `\\DC01\Finance` | Allowed | ✅ Allowed |
-| Same user opens `\\DC01\HR` | Denied | ✅ Access is denied |
-| Removed from `Finance-Users`, fresh login opens `\\DC01\Finance` | Denied | ✅ Access is denied |
-| Added back to `Finance-Users`, fresh login | Allowed | ✅ Allowed |
-| Finance user signs in at the console | `F:` drive appears and opens | ✅ Appears and opens |
-| HR user signs in at the console | No `F:` drive | ✅ No `F:` |
-| Finance user signs in to Okta | Assigned apps appear | ✅ Two apps appear |
-| HR user signs in to Okta | No apps | ✅ Empty dashboard |
+| Finance user (`premington`) opens `\\DC01\Finance` | Allowed | Allowed |
+| Same user opens `\\DC01\HR` | Denied | Access is denied |
+| Removed from `Finance-Users`, fresh login opens `\\DC01\Finance` | Denied | Access is denied |
+| Added back to `Finance-Users`, fresh login | Allowed | Allowed |
+| Finance user signs in at the console | Mapped Finance drive appears and opens | Appears and opens |
+| HR user signs in at the console | No Finance mapped drive | No Finance drive |
+| Finance user signs in to Okta | Assigned apps appear | Two apps appear |
+| HR user signs in to Okta | No apps | Empty dashboard |
 
-Evidence is in [`screenshots/`](screenshots/): for example `premington_denied_access.png`, `premington_oktaapps.png` and `bcastellano_oktaapps.png`.
+**Evidence (embedded):**
+
+![Denied access after group removal](screenshots/premington_denied_access.png)
+*`lab\premington` after removal from `Finance-Users`: `dir Z:\` returns path not found, and `dir \\DC01\Finance` returns Access is denied.*
+
+![Finance user Okta apps](screenshots/premington_oktaapps.png)
+*`premington` Okta dashboard showing the two Finance-assigned apps.*
+
+![HR user Okta apps](screenshots/bcastellano_oktaapps.png)
+*`bcastellano` (HR) Okta dashboard with no assigned apps.*
 
 ---
 
@@ -70,28 +79,33 @@ I reviewed all 40 accounts as if I were the access reviewer: for each one I chec
 | Wesley Crane | Terminated 2026-08-14, account still enabled (offboarding gap) | Disable account |
 | Derek Vance | Contractor ended 2026-06-30, logged in 2026-09-12 after the end date | Disable account, investigate activity |
 | Maya Ortega | Contractor ended 2026-09-30, logged in 2026-10-21 with admin access (IT-Admins, Network-Ops) | Disable account, review admin activity since contract end |
-| Ian Pruitt | Still in Domain Admins from a 2025 project | Remove Domain Admins and AD Admin Console, keep IT-Helpdesk |
+| Ian Pruitt | Help Desk Technician (IT) still in Domain Admins from a 2025 project | Remove Domain Admins and AD Admin Console, keep IT-Helpdesk |
 | Sam Delgado | Kept manager and admin access from covering a 2024 leave | Modify: remove Finance-Managers, Expenses-Approvers, ERP-Finance (Admin), Payroll |
 | Jordan Ellis | Moved from Finance to HR, still holds Finance access | Modify: remove Finance-Users, Finance-Reports, Expenses-Approvers, ERP-Finance, Expense Portal |
 | Ruth Calloway | HR generalist with leftover payroll access from a one-time correction | Modify: remove Payroll-Processors and Payroll |
 | Heidi Lawson | No login since 2026-02-03 | Escalate to manager; disable if unused |
 | Ryan Kowalski | Intern with password-reset rights | Keep, limited to standard users, time-limited, manager attestation |
 
+**Workbook completeness:**
+
+- All 8 non-Keep decisions have a Decision Owner recorded.
+- 31 of 32 Keep rows still have a blank Decision Owner (only Ryan Kowalski / U038 names `Nia Thompson`). These are the standard retain cases where access matches role; filling the owner column is the remaining attestation step.
+
 **What I learned**
 
 - Departed contractors and terminated employees were the highest risk: enabled accounts, and in two cases logins after the end date. Those need an investigation, not just a disable.
 - Movers (Jordan) and temporary access (Sam, Ruth, Ian) are the usual source of permission creep. Access that was granted for a reason needs an end date.
-- Every decision needs a specific rationale and a named owner. "Active employee, access matches role" is not enough.
-- My first pass had gaps (blank owners, vague rationales, Ruth marked Keep). I corrected them after a second look.
+- Every decision needs a specific rationale and a named owner. "Active employee, access matches role" is not enough on its own.
+- My first pass had gaps (blank owners, vague rationales, Ruth marked Keep). I corrected the non-Keep rows after a second look; Keep-row owners are still incomplete.
 
-Remediation (making these changes in AD, with before and after group exports) is next.
+Optional next step (not required to call the project done): remediate the findings in AD with before/after group exports.
 
 ---
 
 ## Problems I hit and how I fixed them
 
 - **RSAT would not install on the client (`0x800f0950`).** The client could not pull Features-on-Demand payloads from Windows Update. I ruled out a WSUS redirect and edition restrictions, and it resolved after a full Windows Update cycle. The fallback I documented is installing from the Features-on-Demand ISO with `-Source` / `-LimitAccess`. I also learned RSAT is only a remote GUI; AD can be fully managed from the DC with PowerShell.
-- **Proxmox thin-pool exhaustion paused my VMs (I/O errors).** The LVM-thin pool (about 49 GB on a 120 GB SSD) was oversubscribed by thin-provisioned disks and snapshots that included RAM state. I diagnosed it with `lvs` / `vgs`, stabilized it by clearing orphaned snapshot volumes and extending the pool, then fixed the root cause by adding a 256GB NVMe drive, creating a new thin pool, and migrating the VM disks. The old pool went from 100% to about 20% usage on the new one.
+- **Proxmox thin-pool exhaustion paused my VMs (I/O errors).** The LVM-thin pool (about 49 GB on a 120 GB SSD) was oversubscribed: thin-provisioned disks plus snapshots that included RAM state filled the pool. I confirmed it with `lvs` / `vgs`, freed space by clearing orphaned snapshot volumes and extending the pool, then fixed the root cause by adding a 256GB NVMe drive, creating a new thin pool, and migrating the VM disks. Usage on the new pool dropped to about 20%.
 - **RAM allocation.** Giving a VM 14 GB on a 16 GB host stopped it from booting. I settled on DC 4 GB and client 8 GB, leaving about 2 GB for the host.
 - **ADUC rejected my login.** I was signed in with a local account, which has no standing in the domain. Domain administration needs a domain account (`lab\Administrator`).
 - **SSH to the client timed out.** `sshd` was listening on port 22 and the firewall rule was enabled and set to Allow, but its profile was Private only. A domain-joined machine uses the Domain profile, so the rule never applied. I fixed it with `Set-NetFirewallRule -Name OpenSSH-Server-In-TCP -Profile Domain,Private`, and confirmed with `Test-NetConnection` instead of ping, which Windows blocks by default.
@@ -104,12 +118,13 @@ Remediation (making these changes in AD, with before and after group exports) is
 
 | Area | Status |
 |---|---|
-| Infrastructure: Proxmox, NVMe storage, DC, client, DNS, domain join, RSAT, SSH | ✅ Done |
-| Access model: OUs, groups, 40 users, shares, NTFS, GPO | ✅ Done |
-| Okta: org, MFA, groups, users, group-based app assignment | ✅ Done |
-| Access review: 40 accounts reviewed, findings documented | ✅ Done |
-| Remediate findings in AD, before/after evidence | 🔲 Next |
-| AD Agent sync from AD to Okta | 🔲 Deferred |
+| Infrastructure: Proxmox, NVMe storage, DC, client, DNS, domain join, RSAT, SSH | Done |
+| Access model: OUs, groups, 40 users, shares, NTFS, GPO | Done |
+| Okta: org, MFA, groups, users, group-based app assignment | Done |
+| Access verification tests (allow, deny, remove, re-add, Okta apps) | Done |
+| Access review: 40 accounts reviewed, findings documented | Done (Keep-row Decision Owners still incomplete in the workbook) |
+| Remediate findings in AD, before/after evidence | Optional follow-on |
+| AD Agent sync from AD to Okta | Deferred (optional) |
 
 **About the sync:** I mirrored users into Okta by hand. The Okta AD Agent needs a domain-joined Windows Server host with at least 8 GB of RAM, which doesn't fit alongside the current VMs, so I deferred it. In production, users would come from an HR-driven joiner/mover/leaver workflow and sync automatically.
 
@@ -127,6 +142,8 @@ Remediation (making these changes in AD, with before and after group exports) is
 - Proxmox administration: VMs, LVM-thin storage, disk migration, resource allocation
 - Troubleshooting from symptoms to root cause (see above)
 
+No PowerShell scripts are checked into this repository. Provisioning was done in the lab; this repo holds the write-up, screenshots, and the access-review workbook.
+
 ---
 
 ## Repository structure
@@ -140,6 +157,3 @@ Remediation (making these changes in AD, with before and after group exports) is
 ```
 
 All people and the company in the dataset are fictional.
-
----
-
